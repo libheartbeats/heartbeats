@@ -44,12 +44,12 @@ $(BINDIR)/%.o : $(SRCDIR)/%.c
 $(BINS) : $(OBJS)
 
 $(BINS) : % : %.o
-	$(CXX) $(CXXFLAGS) -o $@ $< -lpthread -lrt -lm -Llib -lhb-shared -lhrm-shared
+	$(CXX) $(CXXFLAGS) -o $@ $< -Llib -lhb-shared -lhrm-shared -lpthread -lrt -lm
 
 $(TESTS) : $(TEST_OBJS)
 
 $(TESTS) : % : %.o
-	$(CXX) $(CXXFLAGS) -o $@ $< -lpthread -lrt -lm -Llib -lhb-shared -lhrm-shared
+	$(CXX) $(CXXFLAGS) -o $@ $< -Llib -lhb-shared -lhrm-shared -lpthread -lrt -lm
 
 
 bench-tp:
@@ -91,7 +91,7 @@ $(LIBDIR)/libhb-energy-odroidxue.so: $(SRCDIR)/hb-energy-odroidxue.c
 	$(CXX) $(CXXFLAGS) -DHB_ENERGY_IMPL $(LDFLAGS) -Wl,-soname,$(@F) -o $@ $^
 
 $(BINDIR)/calculate-idle-power: $(SRCDIR)/calculate-idle-power.c
-	$(CXX) $(CXXFLAGS) -DHB_ENERGY_IMPL -o $@ $? $(DEFAULT_ENERGY_LIBS)
+	$(CXX) $(CXXFLAGS) -DHB_ENERGY_IMPL -o $@ $? $(DEFAULT_ENERGY_LIBS) -lrt
 
 # Heartbeat shared memory version
 shared: $(LIBDIR)/libhb-shared.so $(LIBDIR)/libhrm-shared.so

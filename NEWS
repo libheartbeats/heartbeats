@@ -5,7 +5,7 @@ Released the 2.0 version of the Heartbeats framework.
 - Added calculate-idle-power program.
 - Data structures are now an opaque types, but can still be accessed by including -types headers.
 - Added more accessor/utility functions.
-- Library is now built as a shared object
+- Libraries are now built as a shared objects
 - Added install/uninstall targets to build
 
 

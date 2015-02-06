@@ -347,7 +347,7 @@ int64_t heartbeat_acc( heartbeat_t* hb, int tag, double accuracy ) {
   struct timespec time_info;
   int64_t time;
   int64_t old_last_time;
-  int64_t old_last_energy;
+  double old_last_energy;
   double energy = 0.0;
   double energy_tmp;
   uint64_t i;

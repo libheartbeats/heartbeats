@@ -9,6 +9,7 @@ The contents of this README file are:
   Directory Organization
   Documentation for Heartbeats
   Environment Variables for Heartbeats
+  Shared Memory Implementations
   Testing Heartbeats
   Using Power Monitoring
   Team Members
@@ -117,7 +118,7 @@ To build the documentation, run:
 
 
 Environment Variables for Heartbeats
-------------------------------------
+---------------------------------------
 
 In the Heartbeats framework, Heartbeat-enabled applications signal
 their presence to the rest of the world by writing a file to a special
@@ -125,6 +126,27 @@ directory.  Currently, this directory is specified by an environment
 variable: HEARTBEAT_ENABLED_DIR.  Before running the tests, users
 should define this variable to point to a directory in which they have
 read and write permissions.
+
+
+Shared Memory Implementations
+---------------------------------------
+
+Heartbeats use shared memory to support inter-process communication.
+However, they do not clean up after themselves - that is the user's
+responsbility.  The following is a simple script to free memory after
+processes complete:
+
+#!/bin/bash
+# Cleanup heartbeats shared memory
+# Connor Imes
+# 2015-01-15
+
+MEMS=`ipcs | grep $USER | awk '{print $2}'`
+for k in $MEMS
+do
+        echo Freeing $k
+        ipcrm -m $k
+done
 
 
 Testing Heartbeats

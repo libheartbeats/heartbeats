@@ -14,7 +14,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
-#include "hb-energy.h"
+#include <energymon/energymon-default.h>
 
 typedef struct {
   int64_t beat;
@@ -76,8 +76,7 @@ typedef struct {
   double global_accuracy;
   double last_average_accuracy;
 
-  uint64_t num_energy_impls;
-  hb_energy_impl* energy_impls;
+  energymon em;
   double* power_window;
   double global_power;
   double last_energy;

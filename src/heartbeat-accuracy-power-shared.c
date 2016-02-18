@@ -7,7 +7,7 @@
  */
 #include "heartbeat-accuracy-power.h"
 #include "heartbeat-util-shared.h"
-#include "hb-energy.h"
+#include <energymon/energymon-default.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -22,26 +22,6 @@
 
 #define __STDC_FORMAT_MACROS
 
-static inline void finish_energy_readings(uint64_t num_energy_impls,
-                                          hb_energy_impl* energy_impls) {
-  uint64_t i;
-  char* energy_source;
-  if (energy_impls != NULL) {
-    for (i = 0; i < num_energy_impls; i++) {
-      if (energy_impls[i].ffinish != NULL) {
-        energy_source = energy_impls[i].fsource();
-        if(energy_impls[i].ffinish()) {
-          fprintf(stderr, "Error finishing energy reading from: %s\n",
-                  energy_source);
-        } else {
-          printf("Finished energy reading from: %s\n", energy_source);
-        }
-      }
-
-    }
-  }
-}
-
 heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
                                     int64_t buffer_depth,
                                     const char* log_name,
@@ -49,13 +29,10 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
                                     double max_perf,
                                     double min_acc,
                                     double max_acc,
-                                    uint64_t num_energy_impls,
-                                    hb_energy_impl* energy_impls,
                                     double min_pow,
                                     double max_pow) {
   int pid = getpid();
-  char* hb_energy_src;
-  uint64_t i;
+  char buf[64] = { '\0' };
 
   heartbeat_t* hb = (heartbeat_t*) malloc(sizeof(heartbeat_t));
   if (hb == NULL) {
@@ -67,8 +44,15 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
   hb->accuracy_window = NULL;
   hb->power_window = NULL;
   hb->text_file = NULL;
-  hb->num_energy_impls = 0;
-  hb->energy_impls = NULL;
+
+  if (energymon_get_default(&hb->em) || hb->em.finit(&hb->em)) {
+    perror("Failed to initialize energymon");
+    free(hb);
+    return NULL;
+  }
+  if (hb->em.fsource(buf, sizeof(buf)) != NULL) {
+    printf("Initialized energy reading from: %s\n", buf);
+  }
 
   hb->state = HB_alloc_state(pid);
   if (hb->state == NULL) {
@@ -150,33 +134,6 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
   }
   fclose(hb->binary_file);
 
-  if (energy_impls != NULL) {
-    for (i = 0; i < num_energy_impls; i++) {
-      // fread and fsource functions are required, finit and ffinish are not
-      if (energy_impls[i].fread == NULL || energy_impls[i].fsource == NULL) {
-        fprintf(stderr, "hb-energy implementation at index %"PRIu64
-                " is missing fread and/or fsource\n", i);
-        // cleanup previously started implementations
-        finish_energy_readings(i, energy_impls);
-        heartbeat_finish(hb);
-        return NULL;
-      } else {
-        hb_energy_src = energy_impls[i].fsource();
-        if(energy_impls[i].finit != NULL && energy_impls[i].finit()) {
-          fprintf(stderr, "Failed to initialize energy reading from: %s\n",
-                  hb_energy_src);
-          // cleanup previously started implementations
-          finish_energy_readings(i, energy_impls);
-          heartbeat_finish(hb);
-          return NULL;
-        }
-        printf("Initialized energy reading from: %s\n", hb_energy_src);
-      }
-    }
-  }
-  hb->num_energy_impls = num_energy_impls;
-  hb->energy_impls = energy_impls;
-
   return hb;
 }
 
@@ -188,7 +145,7 @@ heartbeat_t* heartbeat_init(int64_t window_size,
   return heartbeat_acc_pow_init(window_size, buffer_depth, log_name,
                                 min_target, max_target,
                                 0.0, 0.0,
-                                0, NULL, 0.0, 0.0);
+                                0.0, 0.0);
 }
 
 /**
@@ -235,9 +192,8 @@ void heartbeat_finish(heartbeat_t* hb) {
       fclose(hb->text_file);
     }
     remove(hb->filename);
-    if (hb->energy_impls != NULL) {
-      finish_energy_readings(hb->num_energy_impls, hb->energy_impls);
-      free(hb->energy_impls);
+    if (hb->em.ffinish(&hb->em)) {
+      perror("Failed to finish energymon");
     }
     /*TODO : need to deallocate log */
     free(hb);
@@ -349,8 +305,6 @@ int64_t heartbeat_acc( heartbeat_t* hb, int tag, double accuracy ) {
   int64_t old_last_time;
   double old_last_energy;
   double energy = 0.0;
-  double energy_tmp;
-  uint64_t i;
 
   pthread_mutex_lock(&hb->mutex);
   //printf("Registering Heartbeat\n");
@@ -360,17 +314,7 @@ int64_t heartbeat_acc( heartbeat_t* hb, int tag, double accuracy ) {
   clock_gettime( CLOCK_REALTIME, &time_info );
   time = ( (int64_t) time_info.tv_sec * 1000000000 + (int64_t) time_info.tv_nsec );
 
-  if (hb->energy_impls != NULL) {
-    for (i = 0; i < hb->num_energy_impls; i++) {
-      energy_tmp = hb->energy_impls[i].fread(old_last_time, time);
-      if (energy_tmp < 0) {
-        fprintf(stderr, "heartbeat: Bad energy reading from: %s\n",
-                hb->energy_impls[i].fsource());
-        continue;
-      }
-      energy += energy_tmp;
-    }
-  }
+  energy = hb->em.fread(&hb->em) / 1000000.0;
 
   hb->last_timestamp = time;
   hb->last_energy = energy;

@@ -27,8 +27,6 @@ extern "C" {
  * @param max_perf double
  * @param min_acc double
  * @param max_acc double
- * @param num_energy_impls
- * @param energy_impls
  * @param min_pow double
  * @param max_pow double
  */
@@ -39,8 +37,6 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
                                     double max_perf,
                                     double min_acc,
                                     double max_acc,
-                                    uint64_t num_energy_impls,
-                                    hb_energy_impl* energy_impls,
                                     double min_pow,
                                     double max_pow);
 

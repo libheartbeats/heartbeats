@@ -2,7 +2,7 @@ CXX = /usr/bin/gcc
 CXXFLAGS = -fPIC -Wall -Wno-unknown-pragmas -Iinc -Llib -O6
 DBG = -g
 DEFINES ?=
-LDFLAGS = -shared -lpthread -lrt -lm
+LDFLAGS = -shared -lenergymon-default -lpthread -lrt -lm
 
 DOCDIR = doc
 BINDIR = bin

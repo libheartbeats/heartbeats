@@ -83,6 +83,13 @@ _heartbeat_record_t* HB_alloc_log(int pid, int64_t buffer_size) {
  */
 #if !defined(HEARTBEAT_UTIL_OVERRIDE)
 
+void hb_set_rate(heartbeat_t volatile * hb,
+                 double min_rate,
+                 double max_rate) {
+  hb->state->min_heartrate = min_rate;
+  hb->state->max_heartrate = max_rate;
+}
+
 int64_t hb_get_window_size(heartbeat_t volatile * hb) {
   return hb->state->window_size;
 }
@@ -193,6 +200,13 @@ double hbr_get_instant_rate(heartbeat_record_t volatile * hbr) {
  */
 #if defined(HEARTBEAT_MODE_ACC) && !defined(HEARTBEAT_ACCURACY_UTIL_OVERRIDE)
 
+void hb_set_accuracy(heartbeat_t volatile * hb,
+                     double min_acc,
+                     double max_acc) {
+  hb->state->min_accuracy = min_acc;
+  hb->state->max_accuracy = max_acc;
+}
+
 double hb_get_min_accuracy(heartbeat_t volatile * hb) {
   return hb->state->min_accuracy;
 }
@@ -231,6 +245,13 @@ double hbr_get_instant_accuracy(heartbeat_record_t volatile * hbr) {
  * Functions from heartbeat-accuracy-power.h
  */
 #if defined(HEARTBEAT_MODE_ACC_POW) && !defined(HEARTBEAT_ACCURACY_POWER_UTIL_OVERRIDE)
+
+void hb_set_power(heartbeat_t volatile * hb,
+                  double min_pow,
+                  double max_pow) {
+  hb->state->min_power = min_pow;
+  hb->state->max_power = max_pow;
+}
 
 double hb_get_min_power(heartbeat_t volatile * hb) {
   return hb->state->min_power;

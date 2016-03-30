@@ -1,37 +1,33 @@
 /**
- * Energy reading for an ODROID-XU+E.
+ * Energy reading for an ODROID with INA231 power sensors.
  *
  * @author Connor Imes
  * @date 2014-06-30
  */
 
 #include "hb-energy.h"
-#include "hb-energy-odroidxue.h"
+#include "hb-energy-odroid.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <dirent.h>
 
 // sensor files
-#define ODROID_PWR_FILENAME_TEMPLATE "/sys/bus/i2c/drivers/INA231/%s/sensor_W"
-#define ODROID_SENSOR_ENABLE_FILENAME_TEMPLATE "/sys/bus/i2c/drivers/INA231/%s/enable"
-#define ODROID_SENSOR_UPDATE_INTERVAL_FILENAME_TEMPLATE "/sys/bus/i2c/drivers/INA231/%s/update_period"
-#define ODROID_A15_DIR "4-0040"
-#define ODROID_A7_DIR "4-0045"
-#define ODROID_MEM_DIR "4-0041"
-#define ODROID_GPU_DIR "4-0044"
+#define ODROID_INA231_DIR "/sys/bus/i2c/drivers/INA231/"
+#define ODROID_PWR_FILENAME_TEMPLATE ODROID_INA231_DIR"%s/sensor_W"
+#define ODROID_SENSOR_ENABLE_FILENAME_TEMPLATE ODROID_INA231_DIR"%s/enable"
+#define ODROID_SENSOR_UPDATE_INTERVAL_FILENAME_TEMPLATE ODROID_INA231_DIR"%s/update_period"
 
 // sensor update interval in microseconds
 #define ODROID_SENSOR_READ_DELAY_US_DEFAULT 263808
 static int odroid_read_delay_us;
 
 // sensor file descriptors
-static int odroid_pwr_a15;
-static int odroid_pwr_a7;
-static int odroid_pwr_mem;
-static int odroid_pwr_gpu;
+static int* odroid_pwr_ids = NULL;
+static unsigned int odroid_pwr_id_count;
 
 static int64_t odroid_start_time;
 static double odroid_total_energy;
@@ -46,23 +42,23 @@ static int odroid_read_sensors;
 
 #ifdef HB_ENERGY_IMPL
 int hb_energy_init(void) {
-  return hb_energy_init_odroidxue();
+  return hb_energy_init_odroid();
 }
 
 double hb_energy_read_total(int64_t last_hb_time, int64_t curr_hb_time) {
-  return hb_energy_read_total_odroidxue(last_hb_time, curr_hb_time);
+  return hb_energy_read_total_odroid(last_hb_time, curr_hb_time);
 }
 
 int hb_energy_finish(void) {
-  return hb_energy_finish_odroidxue();
+  return hb_energy_finish_odroid();
 }
 
 char* hb_energy_get_source(void) {
-  return hb_energy_get_source_odroidxue();
+  return hb_energy_get_source_odroid();
 }
 
 hb_energy_impl* hb_energy_impl_alloc(void) {
-  return hb_energy_impl_alloc_odroidxue();
+  return hb_energy_impl_alloc_odroid();
 }
 #endif
 
@@ -120,33 +116,21 @@ static inline int odroid_check_sensor_enabled(char* sensor) {
   return val == 0 ? 1 : 0;
 }
 
-static inline long get_update_interval() {
+static inline long get_update_interval(char** sensors, unsigned int num) {
   long ret = 0;
-  long tmp;
-  tmp = get_sensor_update_interval(ODROID_A15_DIR);
-  if (tmp < 0) {
-    fprintf(stderr, "get_update_interval: Warning: could not read A15 update "
-            "interval\n");
+  long tmp = 0;
+  unsigned int i;
+
+  for (i = 0; i < num; i++) {
+    tmp = get_sensor_update_interval(sensors[i]);
+    if (tmp < 0) {
+      fprintf(stderr, "get_update_interval: Warning: could not read update "
+              "interval from sensor %s\n", sensors[i]);
+    }
+    // keep the largest update_interval
+    ret = tmp > ret ? tmp : ret;
   }
-  ret = tmp > ret ? tmp : ret;
-  tmp = get_sensor_update_interval(ODROID_A7_DIR);
-  if (tmp < 0) {
-    fprintf(stderr, "get_update_interval: Warning: could not read A7 update "
-            "interval\n");
-  }
-  ret = tmp > ret ? tmp : ret;
-  tmp = get_sensor_update_interval(ODROID_MEM_DIR);
-  if (tmp < 0) {
-    fprintf(stderr, "get_update_interval: Warning: could not read MEM update "
-            "interval\n");
-  }
-  ret = tmp > ret ? tmp : ret;
-  tmp = get_sensor_update_interval(ODROID_GPU_DIR);
-  if (tmp < 0) {
-    fprintf(stderr, "get_update_interval: Warning: could not read GPU update "
-            "interval\n");
-  }
-  ret = tmp > ret ? tmp : ret;
+
   if (ret == 0) {
     // failed to read values - use default
     ret = ODROID_SENSOR_READ_DELAY_US_DEFAULT;
@@ -158,8 +142,9 @@ static inline long get_update_interval() {
 /**
  * Stop the sensors polling pthread, cleanup, and close sensor files.
  */
-int hb_energy_finish_odroidxue(void) {
+int hb_energy_finish_odroid(void) {
   int ret = 0;
+  int i;
   // stop sensors polling thread and cleanup
   odroid_read_sensors = 0;
   if(pthread_join(odroid_sensor_thread, NULL)) {
@@ -170,18 +155,15 @@ int hb_energy_finish_odroidxue(void) {
     fprintf(stderr, "Error destroying pthread mutex for ODROID sensor polling thread.\n");
     ret -= 1;
   }
-  // close individual sensor files
-  if (odroid_pwr_a15 > 0) {
-    ret += close(odroid_pwr_a15);
-  }
-  if (odroid_pwr_a15 > 0) {
-    ret += close(odroid_pwr_a7);
-  }
-  if (odroid_pwr_a15 > 0) {
-    ret += close(odroid_pwr_mem);
-  }
-  if (odroid_pwr_a15 > 0) {
-    ret += close(odroid_pwr_gpu);
+
+  if (odroid_pwr_ids != NULL) {
+    // close individual sensor files
+    for (i = 0; i < odroid_pwr_id_count; i++) {
+      if (odroid_pwr_ids[i] > 0) {
+        ret += close(odroid_pwr_ids[i]);
+      }
+    }
+    free(odroid_pwr_ids);
   }
   return ret;
 }
@@ -201,26 +183,63 @@ static inline double odroid_read_pwr(int fd) {
   return val;
 }
 
+static inline char** odroid_get_sensor_directories(unsigned int* count) {
+  unsigned int i = 0;
+  DIR* sensors_dir;
+  struct dirent* entry;
+  char** directories = NULL;
+  *count = 0;
+  if ((sensors_dir = opendir(ODROID_INA231_DIR)) != NULL) {
+    while ((entry = readdir(sensors_dir)) != NULL) {
+      // ignore non-directories and hidden/relative directories (. and ..)
+      if (entry->d_type == DT_LNK && entry->d_name[0] != '.') {
+        (*count)++;
+      }
+    }
+    rewinddir(sensors_dir);
+    if (*count > 0) {
+      directories = malloc(*count * sizeof(char*));
+      while ((entry = readdir(sensors_dir)) != NULL && i < *count) {
+        if (entry->d_type == DT_LNK && entry->d_name[0] != '.') {
+          directories[i++] = entry->d_name;
+        }
+      }
+    }
+    closedir(sensors_dir);
+  } else {
+    perror("get_sensors");
+  }
+  return directories;
+}
+
 /**
  * pthread function to poll the sensors at regular intervals and
  * keep a running average of power between heartbeats.
  */
 void* odroid_poll_sensors(void* args) {
-  double pwr_a15, pwr_a7, pwr_mem, pwr_gpu, sum;
+  double sum;
+  double readings[odroid_pwr_id_count];
+  int i;
+  int bad_reading;
   struct timespec ts_interval;
   ts_interval.tv_sec = odroid_read_delay_us / (1000 * 1000);
   ts_interval.tv_nsec = (odroid_read_delay_us % (1000 * 1000) * 1000);
   while(odroid_read_sensors > 0) {
+    bad_reading = 0;
+    sum = 0;
     // read individual sensors
-    pwr_a15 = odroid_read_pwr(odroid_pwr_a15);
-    pwr_a7 = odroid_read_pwr(odroid_pwr_a7);
-    pwr_mem = odroid_read_pwr(odroid_pwr_mem);
-    pwr_gpu = odroid_read_pwr(odroid_pwr_gpu);
-    // sum the power values
-    if (pwr_a15 < 0 || pwr_a7 < 0 || pwr_mem < 0 || pwr_gpu < 0) {
-      fprintf(stderr, "At least one ODROID power sensor returned bad value - skipping this reading\n");
-    } else {
-      sum = pwr_a15 + pwr_a7 + pwr_mem + pwr_gpu;
+    for (i = 0; i < odroid_pwr_id_count; i++) {
+      readings[i] = odroid_read_pwr(odroid_pwr_ids[i]);
+      if (readings[i] < 0) {
+        fprintf(stderr, "At least one ODROID power sensor returned bad value - skipping this reading\n");
+        bad_reading = 1;
+        break;
+      } else {
+        // sum the power values
+        sum += readings[i];
+      }
+    }
+    if (bad_reading == 0) {
       // keep running average between heartbeats
       pthread_mutex_lock(&odroid_sensor_mutex);
       odroid_hb_pwr_avg = (sum + odroid_hb_pwr_avg_count * odroid_hb_pwr_avg) / (odroid_hb_pwr_avg_count + 1);
@@ -237,59 +256,53 @@ void* odroid_poll_sensors(void* args) {
 /**
  * Open all sensor files and start the thread to poll the sensors.
  */
-int hb_energy_init_odroidxue(void) {
+int hb_energy_init_odroid(void) {
   int ret = 0;
+  int i;
   char odroid_pwr_filename[BUFSIZ];
 
   // reset the total energy reading
   odroid_total_energy = 0;
 
+  // find the sensors
+  odroid_pwr_id_count = 0;
+  char** sensor_dirs = odroid_get_sensor_directories(&odroid_pwr_id_count);
+  if (odroid_pwr_id_count == 0) {
+    fprintf(stderr, "hb_energy_init: Failed to find power sensors\n");
+    return -1;
+  }
+  printf("Found %u INA231 sensors:", odroid_pwr_id_count);
+  for (i = 0; i < odroid_pwr_id_count; i++) {
+    printf(" %s", sensor_dirs[i]);
+  }
+  printf("\n");
+
   // ensure that the sensors are enabled
-  if (odroid_check_sensor_enabled(ODROID_A15_DIR)) {
-    fprintf(stderr, "hb_energy_init: A15 power sensor not enabled\n");
-    return -1;
-  }
-  if (odroid_check_sensor_enabled(ODROID_A7_DIR)) {
-    fprintf(stderr, "hb_energy_init: A7 power sensor not enabled\n");
-    return -1;
-  }
-  if (odroid_check_sensor_enabled(ODROID_MEM_DIR)) {
-    fprintf(stderr, "hb_energy_init: MEM power sensor not enabled\n");
-    return -1;
-  }
-  if (odroid_check_sensor_enabled(ODROID_GPU_DIR)) {
-    fprintf(stderr, "hb_energy_init: GPU power sensor not enabled\n");
-    return -1;
+  for (i = 0; i < odroid_pwr_id_count; i++) {
+    if (odroid_check_sensor_enabled(sensor_dirs[i])) {
+      fprintf(stderr, "hb_energy_init: power sensor not enabled: %s\n", sensor_dirs[i]);
+      free(sensor_dirs);
+      return -1;
+    }
   }
 
   // open individual sensor files
-  sprintf(odroid_pwr_filename, ODROID_PWR_FILENAME_TEMPLATE, ODROID_A15_DIR);
-  odroid_pwr_a15 = odroid_open_file(odroid_pwr_filename);
-  if (odroid_pwr_a15 < 0) {
-    hb_energy_finish_odroidxue();
-    return -1;
-  }
-  sprintf(odroid_pwr_filename, ODROID_PWR_FILENAME_TEMPLATE, ODROID_A7_DIR);
-  odroid_pwr_a7 = odroid_open_file(odroid_pwr_filename);
-  if (odroid_pwr_a7 < 0) {
-    hb_energy_finish_odroidxue();
-    return -1;
-  }
-  sprintf(odroid_pwr_filename, ODROID_PWR_FILENAME_TEMPLATE, ODROID_MEM_DIR);
-  odroid_pwr_mem = odroid_open_file(odroid_pwr_filename);
-  if (odroid_pwr_mem < 0) {
-    hb_energy_finish_odroidxue();
-    return -1;
-  }
-  sprintf(odroid_pwr_filename, ODROID_PWR_FILENAME_TEMPLATE, ODROID_GPU_DIR);
-  odroid_pwr_gpu = odroid_open_file(odroid_pwr_filename);
-  if (odroid_pwr_gpu < 0) {
-    hb_energy_finish_odroidxue();
-    return -1;
+  odroid_pwr_ids = malloc(odroid_pwr_id_count * sizeof(int));
+  for (i = 0; i < odroid_pwr_id_count; i++) {
+    sprintf(odroid_pwr_filename, ODROID_PWR_FILENAME_TEMPLATE, sensor_dirs[i]);
+    odroid_pwr_ids[i] = odroid_open_file(odroid_pwr_filename);
+    if (odroid_pwr_ids[i] < 0) {
+      free(sensor_dirs);
+      hb_energy_finish_odroid();
+      return -1;
+    }
   }
 
   // get the delay time between reads
-  odroid_read_delay_us = get_update_interval();
+  odroid_read_delay_us = get_update_interval(sensor_dirs, odroid_pwr_id_count);
+
+  // we're finished with this variable
+  free(sensor_dirs);
 
   // track start time
   struct timespec now;
@@ -304,13 +317,13 @@ int hb_energy_init_odroidxue(void) {
   ret = pthread_mutex_init(&odroid_sensor_mutex, NULL);
   if(ret) {
     fprintf(stderr, "Failed to create ODROID sensors mutex.\n");
-    hb_energy_finish_odroidxue();
+    hb_energy_finish_odroid();
     return ret;
   }
   ret = pthread_create(&odroid_sensor_thread, NULL, odroid_poll_sensors, NULL);
   if (ret) {
     fprintf(stderr, "Failed to start ODROID sensors thread.\n");
-    hb_energy_finish_odroidxue();
+    hb_energy_finish_odroid();
     return ret;
   }
 
@@ -320,7 +333,7 @@ int hb_energy_init_odroidxue(void) {
 /**
  * Estimate energy from the average power since last heartbeat.
  */
-double hb_energy_read_total_odroidxue(int64_t last_hb_time, int64_t curr_hb_time) {
+double hb_energy_read_total_odroid(int64_t last_hb_time, int64_t curr_hb_time) {
   double result;
   last_hb_time = last_hb_time < 0 ? odroid_start_time : last_hb_time;
   // it's also assumed that curr_hb_time >= last_hb_time
@@ -338,15 +351,15 @@ double hb_energy_read_total_odroidxue(int64_t last_hb_time, int64_t curr_hb_time
   return result;
 }
 
-char* hb_energy_get_source_odroidxue(void) {
-  return "ODROID-XU+E Power Sensors (A15, A7, MEM, GPU)";
+char* hb_energy_get_source_odroid(void) {
+  return "ODROID INA231 Power Sensors";
 }
 
-hb_energy_impl* hb_energy_impl_alloc_odroidxue(void) {
+hb_energy_impl* hb_energy_impl_alloc_odroid(void) {
   hb_energy_impl* hei = (hb_energy_impl*) malloc(sizeof(hb_energy_impl));
-  hei->finit = &hb_energy_init_odroidxue;
-  hei->fread = &hb_energy_read_total_odroidxue;
-  hei->ffinish = &hb_energy_finish_odroidxue;
-  hei->fsource = &hb_energy_get_source_odroidxue;
+  hei->finit = &hb_energy_init_odroid;
+  hei->fread = &hb_energy_read_total_odroid;
+  hei->ffinish = &hb_energy_finish_odroid;
+  hei->fsource = &hb_energy_get_source_odroid;
   return hei;
 }

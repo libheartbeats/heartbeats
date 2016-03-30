@@ -27,6 +27,17 @@ int64_t heartbeat_acc(heartbeat_t* hb,
                       double accuracy);
 
 /**
+ * Set new values for min and max accuracy.
+ *
+ * @param hb pointer to heartbeat_t
+ * @param min_acc the new minimum accuracy
+ * @param max_acc the new maximum accuracy
+ */
+void hb_set_accuracy(heartbeat_t volatile * hb,
+                     double min_acc,
+                     double max_acc);
+
+/**
  * Returns the minimum desired accuracy
  *
  * @param hb pointer to heartbeat_t

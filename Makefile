@@ -20,7 +20,8 @@ TEST_OBJS = $(TEST_ROOTS:%=$(BINDIR)/%.o)
 DEFAULT_ENERGY_LIBS = -Llib -lhb-energy-dummy
 #DEFAULT_ENERGY_LIBS = -Llib -lhb-energy-msr -lm
 #DEFAULT_ENERGY_LIBS = -Llib -lhb-energy-wattsup -lwattsup
-#DEFAULT_ENERGY_LIBS = -Llib -lhb-energy-odroidxue -lpthread
+#DEFAULT_ENERGY_LIBS = -Llib -lhb-energy-odroid -lpthread
+#DEFAULT_ENERGY_LIBS = -Llib -lhb-energy-odroid-smart-power -lhidapi-libusb
 
 all: $(BINDIR) $(LIBDIR) $(SCRATCH) shared $(OUTPUT) $(BINS) shared-accuracy energy shared-accuracy-power
 
@@ -73,9 +74,9 @@ bench-lat:
 #	$(MAKE) $(BINDIR) $(SCRATCH) $(OUTPUT) $(BINS) $(TESTS)
 
 # Power/energy monitors
-energy: $(LIBDIR)/libhb-energy.so $(LIBDIR)/libhb-energy-dummy.so $(LIBDIR)/libhb-energy-msr.so $(LIBDIR)/libhb-energy-odroidxue.so $(BINDIR)/calculate-idle-power
+energy: $(LIBDIR)/libhb-energy.so $(LIBDIR)/libhb-energy-dummy.so $(LIBDIR)/libhb-energy-msr.so $(LIBDIR)/libhb-energy-odroid.so $(LIBDIR)/libhb-energy-odroid-smart-power.so $(BINDIR)/calculate-idle-power
 
-$(LIBDIR)/libhb-energy.so: $(SRCDIR)/hb-energy-dummy.c $(SRCDIR)/hb-energy-msr.c $(SRCDIR)/hb-energy-odroidxue.c
+$(LIBDIR)/libhb-energy.so: $(SRCDIR)/hb-energy-dummy.c $(SRCDIR)/hb-energy-msr.c $(SRCDIR)/hb-energy-odroid.c $(SRCDIR)/hb-energy-odroid-smart-power.c
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -Wl,-soname,$(@F) -o $@ $^
 
 $(LIBDIR)/libhb-energy-dummy.so: $(SRCDIR)/hb-energy-dummy.c
@@ -87,8 +88,11 @@ $(LIBDIR)/libhb-energy-msr.so: $(SRCDIR)/hb-energy-msr.c
 #$(LIBDIR)/libhb-energy-wattsup.so: $(SRCDIR)/hb-energy-wattsup.c
 #	$(CXX) $(CXXFLAGS) -DHB_ENERGY_IMPL $(LDFLAGS) -lwattsup -Wl,-soname,$(@F) -o $@ $^
 
-$(LIBDIR)/libhb-energy-odroidxue.so: $(SRCDIR)/hb-energy-odroidxue.c
+$(LIBDIR)/libhb-energy-odroid.so: $(SRCDIR)/hb-energy-odroid.c
 	$(CXX) $(CXXFLAGS) -DHB_ENERGY_IMPL $(LDFLAGS) -Wl,-soname,$(@F) -o $@ $^
+
+$(LIBDIR)/libhb-energy-odroid-smart-power.so: $(SRCDIR)/hb-energy-odroid-smart-power.c
+	$(CXX) $(CXXFLAGS) -DHB_ENERGY_IMPL $(LDFLAGS) -lhidapi-libusb -Wl,-soname,$(@F) -o $@ $^
 
 $(BINDIR)/calculate-idle-power: $(SRCDIR)/calculate-idle-power.c
 	$(CXX) $(CXXFLAGS) -DHB_ENERGY_IMPL -o $@ $? $(DEFAULT_ENERGY_LIBS) -lrt
@@ -114,9 +118,9 @@ $(LIBDIR)/libhrm-shared.so: $(SRCDIR)/heart_rate_monitor-shared.c
 
 # Installation
 install: all
-	install -m 0644 lib/*.so /usr/local/lib/
+	install -m 0644 $(LIBDIR)/*.so /usr/local/lib/
 	mkdir -p /usr/local/include/heartbeats
-	install -m 0644 inc/* /usr/local/include/heartbeats/
+	install -m 0644 $(INCDIR)/* /usr/local/include/heartbeats/
 
 uninstall:
 	rm -f /usr/local/lib/libhb-*.so

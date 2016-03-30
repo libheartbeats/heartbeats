@@ -48,6 +48,17 @@ int64_t heartbeat(heartbeat_t* hb,
 void heartbeat_finish(heartbeat_t * hb);
 
 /**
+ * Set new values for min and max rate.
+ *
+ * @param hb pointer to heartbeat_t
+ * @param min_pow the new minimum rate
+ * @param max_pow the new maximum rate
+ */
+void hb_set_rate(heartbeat_t volatile * hb,
+                 double min_rate,
+                 double max_rate);
+
+/**
  * Returns the size of the sliding window used to compute the current heart
  * rate
  *

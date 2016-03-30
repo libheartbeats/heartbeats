@@ -45,6 +45,17 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
                                     double max_pow);
 
 /**
+ * Set new values for min and max power.
+ *
+ * @param hb pointer to heartbeat_t
+ * @param min_pow the new minimum power
+ * @param max_pow the new maximum power
+ */
+void hb_set_power(heartbeat_t volatile * hb,
+                  double min_pow,
+                  double max_pow);
+
+/**
  * Returns the minimum desired power
  *
  * @param hb pointer to heartbeat_t

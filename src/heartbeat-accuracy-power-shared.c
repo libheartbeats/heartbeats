@@ -54,6 +54,7 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
                                     double min_pow,
                                     double max_pow) {
   int pid = getpid();
+  char* enabled_dir;
   char* hb_energy_src;
   uint64_t i;
 
@@ -90,11 +91,12 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
     hb->text_file = NULL;
   }
 
-  if(getenv("HEARTBEAT_ENABLED_DIR") == NULL) {
+  enabled_dir = getenv("HEARTBEAT_ENABLED_DIR");
+  if(!enabled_dir) {
     heartbeat_finish(hb);
     return NULL;
   }
-  sprintf(hb->filename, "%s/%d", getenv("HEARTBEAT_ENABLED_DIR"), hb->state->pid);
+  sprintf(hb->filename, "%s/%d", enabled_dir, hb->state->pid);
   printf("%s\n", hb->filename);
 
   hb->log = HB_alloc_log(hb->state->pid, buffer_depth);
@@ -105,19 +107,19 @@ heartbeat_t* heartbeat_acc_pow_init(int64_t window_size,
 
   hb->first_timestamp = hb->last_timestamp = -1;
   hb->state->window_size = window_size;
-  hb->window = (int64_t*) malloc(window_size*sizeof(int64_t));
+  hb->window = (int64_t*) malloc((size_t)window_size*sizeof(int64_t));
   if (hb->window == NULL) {
     perror("Failed to malloc window size");
     heartbeat_finish(hb);
     return NULL;
   }
-  hb->accuracy_window = (double*) malloc(window_size*sizeof(double));
+  hb->accuracy_window = (double*) malloc((size_t)window_size*sizeof(double));
   if (hb->accuracy_window == NULL) {
     perror("Failed to malloc accuracy window");
     heartbeat_finish(hb);
     return NULL;
   }
-  hb->power_window = (double*) malloc(window_size*sizeof(double));
+  hb->power_window = (double*) malloc((size_t)window_size*sizeof(double));
   if (hb->power_window == NULL) {
     perror("Failed to malloc power window");
     heartbeat_finish(hb);
@@ -340,7 +342,7 @@ static inline float hb_window_average_accuracy(heartbeat_t volatile * hb,
 
   //printf("%f  %f  %f\n", *power_rate, window_energy, window_time);
 
-  return fps;
+  return (float)fps;
 }
 
 int64_t heartbeat_acc( heartbeat_t* hb, int tag, double accuracy ) {
@@ -406,7 +408,7 @@ int64_t heartbeat_acc( heartbeat_t* hb, int tag, double accuracy ) {
     //printf("In heartbeat - NOT first time stamp - read index = %d\n",hb->state->read_index );
     double window_accuracy;
     double window_power;
-    int index =  hb->state->buffer_index;
+    int64_t index =  hb->state->buffer_index;
     hb->last_timestamp = time;
     double window_heartrate = hb_window_average_accuracy(hb,
                               time-old_last_time,

@@ -88,17 +88,17 @@ int hrm_get_history(heart_rate_monitor_t volatile * hb,
   if(hb->state->counter > hb->state->buffer_index) {
      memcpy(record,
 	    &hb->log[hb->state->buffer_index],
-	    (hb->state->buffer_index*hb->state->buffer_depth)*sizeof(heartbeat_record_t));
+	    (size_t)(hb->state->buffer_index*hb->state->buffer_depth)*sizeof(heartbeat_record_t));
      memcpy(record + (hb->state->buffer_index*hb->state->buffer_depth),
 	    &hb->log[0],
-	    (hb->state->buffer_index)*sizeof(heartbeat_record_t));
-     return hb->state->buffer_depth;
+	    (size_t)(hb->state->buffer_index)*sizeof(heartbeat_record_t));
+     return (int)hb->state->buffer_depth;
   }
   else {
     memcpy(record,
 	   &hb->log[0],
-	   hb->state->buffer_index*sizeof(heartbeat_record_t));
-    return hb->state->buffer_index;
+	   (size_t)hb->state->buffer_index*sizeof(heartbeat_record_t));
+    return (int)hb->state->buffer_index;
   }
 }
 

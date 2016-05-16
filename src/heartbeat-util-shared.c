@@ -107,7 +107,7 @@ int64_t hb_get_history(heartbeat_t volatile * hb,
     // more records were requested than have been created
     memcpy(record,
            &hb->log[0],
-           hb->state->buffer_index * sizeof(heartbeat_record_t));
+           (size_t)hb->state->buffer_index * sizeof(heartbeat_record_t));
     return hb->state->buffer_index;
   }
 
@@ -115,7 +115,7 @@ int64_t hb_get_history(heartbeat_t volatile * hb,
     // the number of records requested do not overflow the circular buffer
     memcpy(record,
            &hb->log[hb->state->buffer_index - n],
-           n * sizeof(heartbeat_record_t));
+		   (size_t)n * sizeof(heartbeat_record_t));
     return n;
   }
 
@@ -124,10 +124,10 @@ int64_t hb_get_history(heartbeat_t volatile * hb,
     // more records were requested than we can support, return what we have
     memcpy(record,
          &hb->log[hb->state->buffer_index],
-         (hb->state->buffer_depth - hb->state->buffer_index) * sizeof(heartbeat_record_t));
+	     (size_t)(hb->state->buffer_depth - hb->state->buffer_index) * sizeof(heartbeat_record_t));
     memcpy(record + hb->state->buffer_depth - hb->state->buffer_index,
            &hb->log[0],
-           hb->state->buffer_index * sizeof(heartbeat_record_t));
+	     (size_t)hb->state->buffer_index * sizeof(heartbeat_record_t));
     return hb->state->buffer_depth;
   }
 
@@ -135,10 +135,10 @@ int64_t hb_get_history(heartbeat_t volatile * hb,
   // still overflows circular buffer, but we don't want all records
   memcpy(record,
          &hb->log[hb->state->buffer_depth + hb->state->buffer_index - n],
-         (n - hb->state->buffer_index) * sizeof(heartbeat_record_t));
+         (size_t)(n - hb->state->buffer_index) * sizeof(heartbeat_record_t));
   memcpy(record + n - hb->state->buffer_index,
          &hb->log[0],
-         hb->state->buffer_index * sizeof(heartbeat_record_t));
+         (size_t)hb->state->buffer_index * sizeof(heartbeat_record_t));
   return n;
 }
 

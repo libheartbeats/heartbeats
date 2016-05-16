@@ -19,6 +19,7 @@ heartbeat_t* heartbeat_init(int64_t window_size,
                             double min_target,
                             double max_target) {
   int pid = getpid();
+  char* enabled_dir;
 
   heartbeat_t* hb = (heartbeat_t*) malloc(sizeof(heartbeat_t));
   if (hb == NULL) {
@@ -49,11 +50,12 @@ heartbeat_t* heartbeat_init(int64_t window_size,
     hb->text_file = NULL;
   }
 
-  if(getenv("HEARTBEAT_ENABLED_DIR") == NULL) {
+  enabled_dir = getenv("HEARTBEAT_ENABLED_DIR");
+  if(!enabled_dir) {
     heartbeat_finish(hb);
     return NULL;
   }
-  sprintf(hb->filename, "%s/%d", getenv("HEARTBEAT_ENABLED_DIR"), hb->state->pid);
+  snprintf(hb->filename, sizeof(hb->filename), "%s/%d", enabled_dir, hb->state->pid);
   printf("%s\n", hb->filename);
 
   hb->log = HB_alloc_log(hb->state->pid, buffer_depth);
@@ -64,7 +66,7 @@ heartbeat_t* heartbeat_init(int64_t window_size,
 
   hb->first_timestamp = hb->last_timestamp = -1;
   hb->state->window_size = window_size;
-  hb->window = (int64_t*) malloc(window_size*sizeof(int64_t));
+  hb->window = (int64_t*) malloc((size_t)window_size * sizeof(int64_t));
   if (hb->window == NULL) {
     perror("Failed to malloc window size");
     heartbeat_finish(hb);
@@ -175,7 +177,7 @@ static inline float hb_window_average(heartbeat_t volatile * hb,
   }
   fps = (1.0 / (float) average_time)*1000000000;
 
-  return fps;
+  return (float)fps;
 }
 
 int64_t heartbeat( heartbeat_t* hb, int tag )
@@ -210,7 +212,7 @@ int64_t heartbeat( heartbeat_t* hb, int tag )
     }
     else {
       //printf("In heartbeat - NOT first time stamp - read index = %d\n",hb->state->read_index );
-      int index =  hb->state->buffer_index;
+      int64_t index =  hb->state->buffer_index;
       hb->last_timestamp = time;
       double window_heartrate = hb_window_average(hb, time-old_last_time);
       double global_heartrate =

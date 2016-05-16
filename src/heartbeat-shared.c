@@ -55,7 +55,7 @@ heartbeat_t* heartbeat_init(int64_t window_size,
     heartbeat_finish(hb);
     return NULL;
   }
-  sprintf(hb->filename, "%s/%d", enabled_dir, hb->state->pid);
+  snprintf(hb->filename, sizeof(hb->filename), "%s/%d", enabled_dir, hb->state->pid);
   printf("%s\n", hb->filename);
 
   hb->log = HB_alloc_log(hb->state->pid, buffer_depth);
